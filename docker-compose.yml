@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: DockerFile
+    ports:
+      - "5001:5001"
+    environment:
+      - DB_HOST=db_booking
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Password
+      - DB_NAME=booking_service
+      - DB_SSLMode=disable
+    depends_on:
+      - db_booking
+    networks:
+      - app-network
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: DockerFile
+    ports:
+      - "5002:5002"
+    environment:
+      - DB_HOST=db_user
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Password
+      - DB_NAME=user_service
+      - DB_SSLMode=disable
+    depends_on:
+      - db_user
+    networks:
+      - app-network
+
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: DockerFile
+    ports:
+      - "5003:5003"
+    environment:
+      - DB_HOST=db_payment
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=Password
+      - DB_NAME=payment_service
+      - DB_SSLMode=disable
+      - BOOKING_SERVICE_URL=http://booking-service:5001
+    depends_on:
+      - db_payment
+    networks:
+      - app-network
+
+  gateway-service:
+    build:
+      context: ./gateway
+      dockerfile: DockerFile
+    ports:
+      - "8080:8080"
+    environment:
+      - Booking_Service_URL=http://booking-service:5001
+      - USER_SERVICE_URL=http://user-service:5002
+      - PAYMENT_SERVICE_URL=http://payment-service:5003
+    depends_on:
+      - booking-service
+      - user-service
+      - payment-service
+    networks:
+      - app-network
+
+  db_booking:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Password
+      POSTGRES_DB: booking_service
+    ports:
+      - "5434:5432"
+    networks:
+      - app-network
+
+  db_user:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Password
+      POSTGRES_DB: user_service
+    ports:
+      - "5435:5432"
+    networks:
+      - app-network
+
+  db_payment:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Password
+      POSTGRES_DB: payment_service
+    ports:
+      - "5436:5432"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
