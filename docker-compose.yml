@@ -106,6 +106,36 @@ services:
     networks:
       - app-network
 
+  migrate_booking:
+    image: migrate/migrate
+    volumes:
+      - ./booking-service/migrations:/migrations
+    entrypoint: ["migrate", "-path", "/migrations", "-database", "postgres://postgres:Password@db_booking:5432/booking_service?sslmode=disable", "up"]
+    depends_on:
+      - db_booking
+    networks:
+      - app-network
+
+  migrate_user:
+    image: migrate/migrate
+    volumes:
+      - ./user-service/migrations:/migrations
+    entrypoint: ["migrate", "-path", "/migrations", "-database", "postgres://postgres:Password@db_user:5432/user_service?sslmode=disable", "up"]
+    depends_on:
+      - db_user
+    networks:
+      - app-network
+
+  migrate_payment:
+    image: migrate/migrate
+    volumes:
+      - ./payment-service/migrations:/migrations
+    entrypoint: ["migrate", "-path", "/migrations", "-database", "postgres://postgres:Password@db_payment:5432/payment_service?sslmode=disable", "up"]
+    depends_on:
+      - db_payment
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge

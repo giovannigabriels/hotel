@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS payments (
     id SERIAL PRIMARY KEY,
-    payment_uid UUID DEFAULT uuid_generate_v4(),
+    payment_uid UUID,
     booking_id INT NOT NULL,
     user_id INT NOT NULL,
     amount DECIMAL(10, 2) NOT NULL,
