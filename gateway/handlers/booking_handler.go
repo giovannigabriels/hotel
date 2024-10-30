@@ -180,4 +180,38 @@ func CreateBookingHandler(c echo.Context) error {
 	return c.JSONBlob(resp.StatusCode, respBody)
 }
 
+func UpdateCheckinStatusHandler(c echo.Context) error {
+	var req dto.UpdateCheckinStatusRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to process request data"})
+	}
+
+	url := fmt.Sprintf("%s/booking/checkin-status", BookingServiceURL)
+	client := &http.Client{}
+	reqToBookingService, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to create request"})
+	}
+	reqToBookingService.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(reqToBookingService)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to connect to booking service"})
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to read response from booking service"})
+	}
+
+	return c.JSONBlob(resp.StatusCode, respBody)
+}
+
 

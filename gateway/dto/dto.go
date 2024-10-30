@@ -50,3 +50,13 @@ type CreateHotelRequest struct {
 	PhoneNumber string `json:"phone_number"`
 	Email       string `json:"email"`
 }
+
+type CreateRefundRequest struct {
+	UserID    int `json:"user_id"`
+	BookingID int `json:"booking_id"`
+}
+
+type UpdateCheckinStatusRequest struct {
+	BookingID     int    `json:"booking_id"`
+	CheckinStatus string `json:"checkin_status"`
+}

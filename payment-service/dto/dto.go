@@ -40,3 +40,19 @@ type UpdateBookingStatusRequest struct {
 type CallbackRequest struct {
 	PaymentUID string `json:"payment_uid"`
 }
+
+type CreateRefundResponse struct {
+	RefundID int    `json:"refund_id"`
+	Message  string `json:"message"`
+}
+
+type CreateRefundRequest struct {
+	UserID    *int `json:"user_id"`
+	BookingID *int `json:"booking_id"`
+}
+
+type UpdateBookingStatusRefundRequest struct {
+	UserID    *int    `json:"user_id"`
+	BookingID *int    `json:"booking_id"`
+	Status    string `json:"status"`
+}

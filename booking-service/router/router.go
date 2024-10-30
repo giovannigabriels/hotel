@@ -25,6 +25,9 @@ func InitRoutes(e *echo.Echo) {
 	e.GET("/booking/:user_id", handler.GetBookingsByUserID)
 	e.GET("/booking/detail/:booking_id", handler.GetBookingByID)
 
-	e.POST("/booking/status", handler.UpdateBookingStatusHandler)
+	e.POST("/booking/callback/status", handler.UpdateBookingStatusHandler)
+
+	e.POST("/booking/refund/status", handler.UpdateBookingStatus)
+	e.PUT("/booking/checkin-status", handler.UpdateCheckinStatus)
 
 }

@@ -364,6 +364,88 @@ func UpdateBookingStatusHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "Booking status updated successfully"})
 }
 
+func UpdateBookingStatus(c echo.Context) error {
+	var req dto.UpdateBookingRefundStatusRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+
+	if req.BookingID == nil || req.UserID == nil || req.Status == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking ID, User ID, and Status are required"})
+	}
+
+	query := `
+		UPDATE bookings 
+		SET status = $1, updated_at = NOW()
+		WHERE id = $2 AND user_id = $3 AND checkin_status NOT IN ('checked_in', 'checked_out')
+	`
+	res, err := config.DB.Exec(query, req.Status, req.BookingID, req.UserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update booking status"})
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found or cannot refund"})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "Booking status updated successfully"})
+}
+
+func UpdateCheckinStatus(c echo.Context) error {
+	var req dto.UpdateCheckinStatusRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+
+	if req.BookingID == nil || req.CheckinStatus == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking ID and Check-in Status are required"})
+	}
+
+	if req.CheckinStatus != "checked_in" && req.CheckinStatus != "checked_out" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Check-in Status must be either 'checked_in' or 'checked_out'"})
+	}
+
+	var currentStatus, currentCheckinStatus string
+	query := `SELECT status, checkin_status FROM bookings WHERE id = $1`
+	err := config.DB.QueryRow(query, req.BookingID).Scan(&currentStatus, &currentCheckinStatus)
+	if err == sql.ErrNoRows {
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found"})
+	} else if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to retrieve booking status"})
+	}
+
+	if req.CheckinStatus == "checked_in" {
+		if currentStatus != "confirmed" || currentCheckinStatus != "not_checked_in" {
+			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking must be confirmed and not checked in to proceed with check-in"})
+		}
+	} else if req.CheckinStatus == "checked_out" {
+		if currentCheckinStatus != "checked_in" {
+			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking must be checked in to proceed with check-out"})
+		}
+	}
+
+	updateQuery := `
+		UPDATE bookings 
+		SET checkin_status = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	res, err := config.DB.Exec(updateQuery, req.CheckinStatus, req.BookingID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update check-in status"})
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found or no change in status"})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "Check-in status updated successfully"})
+}
+
+
 
 
 

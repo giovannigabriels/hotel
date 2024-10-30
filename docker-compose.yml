@@ -50,6 +50,7 @@ services:
       - DB_PASSWORD=Password
       - DB_NAME=payment_service
       - DB_SSLMode=disable
+      - BOOKING_SERVICE_URL=http://booking-service:5001
     depends_on:
       - db_payment
     networks:

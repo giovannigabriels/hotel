@@ -56,3 +56,15 @@ type UpdateBookingStatusRequest struct {
 type SuccessResponse struct {
 	Message string `json:"message"`
 }
+
+
+type UpdateBookingRefundStatusRequest struct {
+	BookingID *int    `json:"booking_id" validate:"required"`
+	UserID    *int    `json:"user_id" validate:"required"`
+	Status    string `json:"status" validate:"required"`
+}
+
+type UpdateCheckinStatusRequest struct {
+	BookingID     *int   `json:"booking_id"`
+	CheckinStatus string `json:"checkin_status"`
+}

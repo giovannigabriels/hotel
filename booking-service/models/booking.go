@@ -15,6 +15,7 @@ const (
     Pending   BookingStatus = "pending"
     Confirmed BookingStatus = "confirmed"
     Canceled  BookingStatus = "canceled"
+    Refund    BookingStatus = "request_refund"
 )
 
 type CheckinStatus string

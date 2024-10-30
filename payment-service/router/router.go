@@ -14,4 +14,5 @@ func InitRoutes(e *echo.Echo) {
 
 	e.POST("/payment", handler.CreatePayment)
 	e.POST("/payment/callback", handler.PaymentCallbackHandler)
+	e.POST("/refund", handler.CreateRefund)
 }
