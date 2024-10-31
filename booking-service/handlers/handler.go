@@ -237,11 +237,11 @@ func ListRoomsByHotelId(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "hotel_id is required"})
 	}
 
-	query := `SELECT id, hotel_id, room_number, room_type, price_per_night, description, status, created_at, updated_at FROM rooms WHERE hotel_id = $1`
+	query := `SELECT id, hotel_id, room_number, room_type, price_per_night, description, status, created_at, updated_at FROM rooms WHERE hotel_id = $1 AND status = $2`
 
 	var rooms []model.Room
 
-	rows, err := config.DB.Query(query, hotelID)
+	rows, err := config.DB.Query(query, hotelID, "available")
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to retrieve rooms"})
 	}
@@ -409,8 +409,9 @@ func UpdateCheckinStatus(c echo.Context) error {
 	}
 
 	var currentStatus, currentCheckinStatus string
-	query := `SELECT status, checkin_status FROM bookings WHERE id = $1`
-	err := config.DB.QueryRow(query, req.BookingID).Scan(&currentStatus, &currentCheckinStatus)
+	var roomID int
+	query := `SELECT status, checkin_status, room_id FROM bookings WHERE id = $1`
+	err := config.DB.QueryRow(query, req.BookingID).Scan(&currentStatus, &currentCheckinStatus, &roomID)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found"})
 	} else if err != nil {
@@ -442,8 +443,138 @@ func UpdateCheckinStatus(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found or no change in status"})
 	}
 
+	var roomStatus string
+	if req.CheckinStatus == "checked_in" {
+		roomStatus = "occupied"
+	} else if req.CheckinStatus == "checked_out" {
+		roomStatus = "available"
+	}
+
+	roomUpdateQuery := `
+		UPDATE rooms 
+		SET status = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	_, err = config.DB.Exec(roomUpdateQuery, roomStatus, roomID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update room status"})
+	}
+
 	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "Check-in status updated successfully"})
 }
+
+func UpdateBookingStatusRefund(c echo.Context) error {
+	var req dto.UpdateBookingStatusRefundRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+
+	if req.BookingID == nil || req.Status == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking ID and Status are required"})
+	}
+
+	var roomID int
+	var currentStatus, checkinStatus string
+	getBookingQuery := `SELECT room_id, status, checkin_status FROM bookings WHERE id = $1`
+	err := config.DB.QueryRow(getBookingQuery, req.BookingID).Scan(&roomID, &currentStatus, &checkinStatus)
+	if err == sql.ErrNoRows {
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found"})
+	} else if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to retrieve booking"})
+	}
+
+
+	if currentStatus == "refunded" {
+		log.Println(currentStatus, "RED?")
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Message: "Booking has already been refunded",
+		})
+	}
+
+
+	if req.Status == "refunded" {
+		if currentStatus != "request_refund" || checkinStatus != "not_checked_in" {
+			return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+				Message: "Booking must have status 'request_refund' and check-in status 'not_checked_in' to be refunded",
+			})
+		}
+	}
+
+
+	updateBookingQuery := `UPDATE bookings SET status = $1, updated_at = NOW() WHERE id = $2`
+	_, err = config.DB.Exec(updateBookingQuery, req.Status, req.BookingID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update booking status"})
+	}
+
+
+	if req.Status == "refunded" {
+		updateRoomQuery := `UPDATE rooms SET status = 'available', updated_at = NOW() WHERE id = $1`
+		_, err = config.DB.Exec(updateRoomQuery, roomID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update room status"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "Booking status updated successfully"})
+}
+
+func CancelBooking(c echo.Context) error {
+	var req dto.CancelBookingRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+
+	if req.BookingID == nil || req.UserID == nil || *req.BookingID == 0 || *req.UserID == 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking ID and User ID are required and must be non-zero values"})
+	}
+
+	var bookingUserID, roomID int
+	var bookingStatus string
+	checkBookingQuery := `SELECT user_id, room_id, status FROM bookings WHERE id = $1`
+	err := config.DB.QueryRow(checkBookingQuery, *req.BookingID).Scan(&bookingUserID, &roomID, &bookingStatus)
+	if err == sql.ErrNoRows {
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found"})
+	} else if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to retrieve booking"})
+	}
+
+	if bookingUserID != *req.UserID {
+		return c.JSON(http.StatusForbidden, dto.ErrorResponse{Message: "Forbidden: Not your booking"})
+	}
+
+	if bookingStatus == "canceled" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking already canceled"})
+	}
+	if bookingStatus != "pending" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking already confirmed, please request refund"})
+	}
+
+	updateBookingQuery := `UPDATE bookings SET status = 'canceled', updated_at = NOW() WHERE id = $1`
+	_, err = config.DB.Exec(updateBookingQuery, *req.BookingID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update booking status"})
+	}
+
+	updateRoomQuery := `UPDATE rooms SET status = 'available', updated_at = NOW() WHERE id = $1`
+	_, err = config.DB.Exec(updateRoomQuery, roomID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update room status"})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "Booking canceled successfully"})
+}
+
+
+
+
+
+
+
+
+
 
 
 

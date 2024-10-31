@@ -30,6 +30,7 @@ func InitRoutes(e *echo.Echo) {
 		user.POST("/booking", handler.CreateBookingHandler)
 		user.GET("/booking", handler.GetListBooking)
 		user.GET("/booking/detail/:booking_id", handler.GetDetailBooking)
+		user.POST("/booking/cancel", handler.CancelBookingHandler)
 
 		user.POST("/payment", handler.CreatePaymentHandler)
 		user.POST("/refund/:booking_id", handler.CreateRefundHandler)
@@ -41,6 +42,7 @@ func InitRoutes(e *echo.Echo) {
 		admin.POST("/hotel", handler.CreateHotelHandler)
 		admin.POST("/room", handler.CreateRoomHandler)
 		admin.PUT("/booking/checkin-status", handler.UpdateCheckinStatusHandler)
+		admin.PUT("/refund", handler.UpdateRefundHandler)
 
 	}	
 }

@@ -99,3 +99,41 @@ func CreateRefundHandler(c echo.Context) error {
 
 	return c.JSONBlob(resp.StatusCode, respBody)
 }
+
+func UpdateRefundHandler(c echo.Context) error {
+	var req dto.UpdateRefundRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+
+	if PaymentServiceURL == "" {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Payment service URL not configured"})
+	}
+
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to process request data"})
+	}
+
+	url := fmt.Sprintf("%s/refund", PaymentServiceURL)
+	resp, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to connect to payment service"})
+	}
+	resp.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	res, err := client.Do(resp)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to send request to payment service"})
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to read response from payment service"})
+	}
+
+	return c.JSONBlob(res.StatusCode, body)
+}

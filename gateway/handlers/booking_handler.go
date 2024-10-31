@@ -214,4 +214,37 @@ func UpdateCheckinStatusHandler(c echo.Context) error {
 	return c.JSONBlob(resp.StatusCode, respBody)
 }
 
+func CancelBookingHandler(c echo.Context) error {
+	userID, ok := c.Get("id").(float64)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Message: "Unauthorized"})
+	}
+
+	var req dto.CancelBookingRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+
+	req.UserID = int(userID)
+
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to process request data"})
+	}
+
+	url := fmt.Sprintf("%s/booking/cancel", BookingServiceURL)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to connect to booking service"})
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to read response from booking service"})
+	}
+
+	return c.JSONBlob(resp.StatusCode, respBody)
+}
+
 

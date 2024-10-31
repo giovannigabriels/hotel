@@ -184,3 +184,88 @@ func CreateRefund(c echo.Context) error {
 	})
 }
 
+func UpdateRefund(c echo.Context) error {
+	var req dto.UpdateRefundRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+	if req.Status == "" || req.BookingId == nil {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Status and Booking ID are required"})
+	}
+	if req.Status != "completed" && req.Status != "denied" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Status must be either 'completed' or 'denied'"})
+	}
+
+
+	var paymentID int
+	checkPaymentQuery := `SELECT id FROM payments WHERE booking_id = $1`
+	err := config.DB.QueryRow(checkPaymentQuery, req.BookingId).Scan(&paymentID)
+	if err == sql.ErrNoRows {
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Payment not found for the provided booking ID"})
+	} else if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to check payment"})
+	}
+
+
+	var existingRefundID int
+	var currentRefundStatus string
+	checkRefundQuery := `SELECT id, refund_status FROM refunds WHERE payment_id = $1`
+	err = config.DB.QueryRow(checkRefundQuery, paymentID).Scan(&existingRefundID, &currentRefundStatus)
+	if err == sql.ErrNoRows {
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Refund not found for the provided booking ID"})
+	} else if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to check existing refund"})
+	}
+
+
+	if currentRefundStatus != "requested" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Message: "Refund has already been processed",
+		})
+	}
+
+	var bookingStatus string
+	if req.Status == "completed" {
+		bookingStatus = "refunded"
+	} else {
+		bookingStatus = "confirmed"
+	}
+
+	bookingServiceURL := os.Getenv("BOOKING_SERVICE_URL")
+	if bookingServiceURL == "" {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Booking service URL is not configured"})
+	}
+
+	updateBookingStatusRequest := dto.RequestUpdateStatusBookingService{
+		BookingID: req.BookingId,
+		Status:    bookingStatus,
+	}
+	jsonData, err := json.Marshal(updateBookingStatusRequest)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to prepare booking status update request"})
+	}
+
+	url := fmt.Sprintf("%s/booking/status", bookingServiceURL)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to connect to booking service"})
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update booking status in booking service"})
+	}
+
+	updateRefundQuery := `UPDATE refunds SET refund_status = $1, updated_at = NOW() WHERE payment_id = $2`
+	_, err = config.DB.Exec(updateRefundQuery, req.Status, paymentID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update refund status"})
+	}
+
+	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "Refund status updated successfully and booking status adjusted"})
+}
+
+
+
+

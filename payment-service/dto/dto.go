@@ -56,3 +56,13 @@ type UpdateBookingStatusRefundRequest struct {
 	BookingID *int    `json:"booking_id"`
 	Status    string `json:"status"`
 }
+
+type UpdateRefundRequest struct {
+	BookingId *int `json:"booking_id"`
+	Status string `json:"status"`
+}
+
+type RequestUpdateStatusBookingService struct {
+	BookingID *int    `json:"booking_id"`
+	Status    string `json:"status"`
+}
