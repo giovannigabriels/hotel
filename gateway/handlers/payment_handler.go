@@ -18,6 +18,8 @@ import (
 
 var PaymentServiceURL string
 
+// var BookingServiceURL string
+
 func init() {
 	err := godotenv.Load()
 	if err != nil {
@@ -28,6 +30,11 @@ func init() {
 	if PaymentServiceURL == "" {
 		log.Fatal("PAYMENT_SERVICE_URL not set in environment")
 	}
+	BookingServiceURL = os.Getenv("Booking_Service_URL")
+	if BookingServiceURL == "" {
+		log.Fatal("Booking_Service_URL not set in environment")
+	}
+
 }
 
 func CreatePaymentHandler(c echo.Context) error {
@@ -39,6 +46,18 @@ func CreatePaymentHandler(c echo.Context) error {
 	var req dto.CreatePaymentRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
+	}
+
+	urlBooking := fmt.Sprintf("%s/booking/detail/%d?user_id=%d", BookingServiceURL, req.BookingID, int(userID))
+	bookingResp, err := http.Get(urlBooking)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to connect to booking service"})
+	}
+	defer bookingResp.Body.Close()
+
+
+	if bookingResp.StatusCode == http.StatusNotFound {
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found"})
 	}
 
 	req.UserID = int(userID)
@@ -62,6 +81,8 @@ func CreatePaymentHandler(c echo.Context) error {
 
 	return c.JSONBlob(resp.StatusCode, respBody)
 }
+
+
 
 func CreateRefundHandler(c echo.Context) error {
 	userID, ok := c.Get("id").(float64)

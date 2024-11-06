@@ -126,12 +126,17 @@ func GetListBooking(c echo.Context) error {
 }
 
 func GetDetailBooking(c echo.Context) error {
+	userID, ok := c.Get("id").(float64)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Message: "Unauthorized"})
+	}
+
 	bookingID := c.Param("booking_id")
 	if bookingID == "" {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "booking_id is required"})
 	}
 
-	url := fmt.Sprintf("%s/booking/detail/%s", BookingServiceURL, bookingID)
+	url := fmt.Sprintf("%s/booking/detail/%s?user_id=%v", BookingServiceURL, bookingID, userID)
 	resp, err := http.Get(url)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to connect to booking service"})

@@ -33,8 +33,8 @@ func RegisterUser(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
 	}
 
-	if req.Username == "" {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Username is required"})
+	if req.Username == "" || len(req.Username) < 3 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Username must be at least 3 characters"})
 	}
 
 	if req.Email == "" || !isValidEmail(req.Email) {

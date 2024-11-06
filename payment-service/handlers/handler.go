@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -25,13 +26,39 @@ func CreatePayment(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
 	}
 
-	if req.BookingID == 0 || req.UserID == 0 || req.Amount <= 0 || req.PaymentMethod == "" {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Missing or invalid payment details"})
+	
+	if req.BookingID == 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking ID is required"})
+	}
+
+	if req.UserID == 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "User ID is required"})
+	}
+
+	if req.Amount <= 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Amount must be greater than zero"})
+	}
+
+	if req.PaymentMethod == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Payment method is required"})
+	}
+
+	
+	checkPaymentQuery := `
+		SELECT id FROM payments WHERE booking_id = $1 AND user_id = $2
+	`
+	var existingPaymentID int
+	err := config.DB.QueryRow(checkPaymentQuery, req.BookingID, req.UserID).Scan(&existingPaymentID)
+	if err == nil {
+		
+		return c.JSON(http.StatusConflict, dto.ErrorResponse{Message: "Payment already created for this booking and user"})
+	} else if err != sql.ErrNoRows {
+		
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to check existing payment"})
 	}
 
 	paymentUID := uuid.New().String()
 
-	log.Println(paymentUID, "paymentUID")
 
 	query := `
 		INSERT INTO payments (payment_uid, booking_id, user_id, amount, payment_method, payment_status, payment_date, updated_at)
@@ -41,7 +68,7 @@ func CreatePayment(c echo.Context) error {
 
 	var paymentID int
 	var paymentDate time.Time
-	err := config.DB.QueryRow(query, paymentUID, req.BookingID, req.UserID, req.Amount, req.PaymentMethod, "pending").
+	err = config.DB.QueryRow(query, paymentUID, req.BookingID, req.UserID, req.Amount, req.PaymentMethod, "pending").
 		Scan(&paymentID, &paymentDate)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to create payment"})
@@ -140,7 +167,22 @@ func CreateRefund(c echo.Context) error {
 	defer updateStatusResp.Body.Close()
 
 	if updateStatusResp.StatusCode != http.StatusOK {
-		return c.JSON(updateStatusResp.StatusCode, dto.ErrorResponse{Message: "Failed to update booking status"})
+		var respData struct {
+			Message string `json:"message"`
+		}
+	
+
+		respBody, err := io.ReadAll(updateStatusResp.Body)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to read response from booking service"})
+		}
+	
+		err = json.Unmarshal(respBody, &respData)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to parse response from booking service"})
+		}
+	
+		return c.JSON(updateStatusResp.StatusCode, dto.ErrorResponse{Message: respData.Message})
 	}
 
 	var paymentID int

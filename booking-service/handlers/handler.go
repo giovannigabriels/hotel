@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -19,6 +20,42 @@ func CreateHotel(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
 	}
 
+
+	if req.Name == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Hotel name is required"})
+	}
+	if req.Address == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Address is required"})
+	}
+	if req.City == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "City is required"})
+	}
+	if req.Country == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Country is required"})
+	}
+	if req.PhoneNumber == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Phone number is required"})
+	}
+	if len(req.PhoneNumber) < 10 || len(req.PhoneNumber) > 12 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Phone number must be between 10 and 12 characters"})
+	}
+	if req.Email == "" || !isValidEmail(req.Email) {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Valid email is required"})
+	}
+
+
+	var existingHotelID int
+	checkQuery := "SELECT id FROM hotels WHERE name = $1 LIMIT 1"
+	err := config.DB.QueryRow(checkQuery, req.Name).Scan(&existingHotelID)
+	if err == nil {
+	
+		return c.JSON(http.StatusConflict, dto.ErrorResponse{Message: "Hotel with this name already exists"})
+	} else if err != sql.ErrNoRows {
+	
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to check hotel existence"})
+	}
+
+
 	query := `
 		INSERT INTO hotels (name, address, city, country, phone_number, email, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
@@ -26,8 +63,7 @@ func CreateHotel(c echo.Context) error {
 	`
 
 	var hotelID int
-
-	err := config.DB.QueryRow(query, req.Name, req.Address, req.City, req.Country, req.PhoneNumber, req.Email).Scan(&hotelID)
+	err = config.DB.QueryRow(query, req.Name, req.Address, req.City, req.Country, req.PhoneNumber, req.Email).Scan(&hotelID)
 	if err != nil {
 		log.Println("Error executing query:", err)
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to create hotel"})
@@ -35,9 +71,15 @@ func CreateHotel(c echo.Context) error {
 
 	return c.JSON(http.StatusCreated, dto.CreateHotelResponse{
 		HotelId: hotelID,
-		Message:  "Hotel created successfully",
+		Message: "Hotel created successfully",
 	})
 }
+
+func isValidEmail(email string) bool {
+	re := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return re.MatchString(email)
+}
+
 
 func CreateRoom(c echo.Context) error {
 	var req dto.CreateRoomRequest
@@ -46,14 +88,34 @@ func CreateRoom(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid request"})
 	}
 
+
+	if req.HotelID == 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Hotel ID is required"})
+	}
+	if req.RoomNumber == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Room number is required"})
+	}
+	if req.RoomType == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Room type is required"})
+	}
+	if req.PricePerNight <= 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Price per night must be greater than 0"})
+	}
+	if req.Description == "" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Description is required"})
+	}
+	if req.Status != "available" && req.Status != "maintenance" {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Status must be either 'available' or 'maintenance'"})
+	}
+
+
 	hotelCheckQuery := `
 		SELECT id FROM hotels WHERE id = $1
 	`
 	var existingHotelID int
-
 	err := config.DB.QueryRow(hotelCheckQuery, req.HotelID).Scan(&existingHotelID)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "hotel not found"})
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Hotel not found"})
 	}
 
 	roomCheckQuery := `
@@ -62,7 +124,7 @@ func CreateRoom(c echo.Context) error {
 	var existingRoomID int
 	err = config.DB.QueryRow(roomCheckQuery, req.HotelID, req.RoomNumber).Scan(&existingRoomID)
 	if err == nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "room_number already exists"})
+		return c.JSON(http.StatusConflict, dto.ErrorResponse{Message: "Room number already exists"})
 	}
 
 	insertRoomQuery := `
@@ -80,7 +142,7 @@ func CreateRoom(c echo.Context) error {
 
 	return c.JSON(http.StatusCreated, dto.CreateRoomResponse{
 		RoomId:  roomID,
-		Message:  "Room created successfully",
+		Message: "Room created successfully",
 	})
 }
 
@@ -94,13 +156,25 @@ func CreateBooking(c echo.Context) error {
 
 	checkinDate, err := time.Parse("2006-01-02", req.CheckinDate)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid checkin_date format"})
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid checkin_date format. Use YYYY-MM-DD"})
 	}
+
 
 	checkoutDate, err := time.Parse("2006-01-02", req.CheckoutDate)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid checkout_date format"})
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Invalid checkout_date format. Use YYYY-MM-DD"})
 	}
+
+
+	if checkinDate.After(checkoutDate) {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "checkin_date cannot be after checkout_date"})
+	}
+
+
+	if req.TotalPrice <= 0 {
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "total_price must be greater than zero"})
+	}
+
 
 	var roomStatus string
 	checkRoomQuery := `
@@ -148,11 +222,11 @@ func CreateBooking(c echo.Context) error {
 func GetAllHotels(c echo.Context) error {
 	query := `SELECT id, name, address, city, country, phone_number, email, created_at, updated_at FROM hotels`
 
-	var hotels []model.Hotel
+
+	hotels := make([]model.Hotel, 0)
 
 	rows, err := config.DB.Query(query)
 	if err != nil {
-		log.Print(err, "ERRORNYA")
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to retrieve hotels"})
 	}
 	defer rows.Close()
@@ -239,7 +313,8 @@ func ListRoomsByHotelId(c echo.Context) error {
 
 	query := `SELECT id, hotel_id, room_number, room_type, price_per_night, description, status, created_at, updated_at FROM rooms WHERE hotel_id = $1 AND status = $2`
 
-	var rooms []model.Room
+
+	rooms := make([]model.Room, 0)
 
 	rows, err := config.DB.Query(query, hotelID, "available")
 	if err != nil {
@@ -280,7 +355,7 @@ func GetBookingsByUserID(c echo.Context) error {
 	}
 
 	query := `
-		SELECT id, user_id, room_id, checkin_date, checkout_date, total_price, status, created_at, updated_at 
+		SELECT id, user_id, room_id, checkin_date, checkout_date, total_price, status, checkin_status, created_at, updated_at 
 		FROM bookings WHERE user_id = $1
 	`
 
@@ -302,6 +377,7 @@ func GetBookingsByUserID(c echo.Context) error {
 			&booking.CheckoutDate,
 			&booking.TotalPrice,
 			&booking.Status,
+			&booking.CheckinStatus,
 			&booking.CreatedAt,
 			&booking.UpdatedAt,
 		); err != nil {
@@ -320,14 +396,16 @@ func GetBookingByID(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "booking_id is required"})
 	}
 
+	userID := c.QueryParam("user_id")
+
 	query := `
-		SELECT id, user_id, room_id, checkin_date, checkout_date, total_price, status, created_at, updated_at 
-		FROM bookings WHERE id = $1
+		SELECT id, user_id, room_id, checkin_date, checkout_date, total_price, status, checkin_status, created_at, updated_at 
+		FROM bookings WHERE id = $1 AND user_id = $2
 	`
 
 	var booking model.Booking
 
-	err := config.DB.QueryRow(query, bookingID).Scan(
+	err := config.DB.QueryRow(query, bookingID, userID).Scan(
 		&booking.BookingID,
 		&booking.UserID,
 		&booking.RoomID,
@@ -335,6 +413,7 @@ func GetBookingByID(c echo.Context) error {
 		&booking.CheckoutDate,
 		&booking.TotalPrice,
 		&booking.Status,
+		&booking.CheckinStatus,
 		&booking.CreatedAt,
 		&booking.UpdatedAt,
 	)
@@ -375,19 +454,39 @@ func UpdateBookingStatus(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking ID, User ID, and Status are required"})
 	}
 
+
+	checkQuery := `
+		SELECT id FROM bookings 
+		WHERE id = $1 AND user_id = $2
+	`
+	var bookingID int
+	err := config.DB.QueryRow(checkQuery, req.BookingID, req.UserID).Scan(&bookingID)
+	if err == sql.ErrNoRows {
+	
+		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found"})
+	} else if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to check booking"})
+	}
+
+
 	query := `
 		UPDATE bookings 
 		SET status = $1, updated_at = NOW()
-		WHERE id = $2 AND user_id = $3 AND checkin_status NOT IN ('checked_in', 'checked_out')
+		WHERE id = $2 AND user_id = $3 AND checkin_status NOT IN ('checked_in', 'checked_out') AND status = $4
 	`
-	res, err := config.DB.Exec(query, req.Status, req.BookingID, req.UserID)
+	res, err := config.DB.Exec(query, req.Status, req.BookingID, req.UserID, "confirmed")
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to update booking status"})
 	}
 
 	rowsAffected, err := res.RowsAffected()
-	if err != nil || rowsAffected == 0 {
-		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found or cannot refund"})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Message: "Failed to check update result"})
+	}
+
+	if rowsAffected == 0 {
+	
+		return c.JSON(http.StatusBadRequest, dto.ErrorResponse{Message: "Booking already checked-in or checked-out, or payment is not confirmed"})
 	}
 
 	return c.JSON(http.StatusOK, dto.SuccessResponse{Message: "Booking status updated successfully"})
@@ -533,8 +632,8 @@ func CancelBooking(c echo.Context) error {
 
 	var bookingUserID, roomID int
 	var bookingStatus string
-	checkBookingQuery := `SELECT user_id, room_id, status FROM bookings WHERE id = $1`
-	err := config.DB.QueryRow(checkBookingQuery, *req.BookingID).Scan(&bookingUserID, &roomID, &bookingStatus)
+	checkBookingQuery := `SELECT user_id, room_id, status FROM bookings WHERE id = $1 AND user_id = $2`
+	err := config.DB.QueryRow(checkBookingQuery, *req.BookingID, req.UserID).Scan(&bookingUserID, &roomID, &bookingStatus)
 	if err == sql.ErrNoRows {
 		return c.JSON(http.StatusNotFound, dto.ErrorResponse{Message: "Booking not found"})
 	} else if err != nil {
